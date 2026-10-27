@@ -1,7 +1,6 @@
 import { appendFileSync } from 'node:fs';
 import { addAlert } from './db.js';
 
-// Writes the alert to the registry and the log file; ctx.onAlert is the hook for webhooks and the UI.
 export function recordAlert(db, ctx, decoy, source, detail, process = null) {
   const a = { decoy_id: decoy.id, path: decoy.path, ts: new Date().toISOString(), source, detail, process };
   a.id = addAlert(db, a);

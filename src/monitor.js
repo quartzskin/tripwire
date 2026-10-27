@@ -17,7 +17,6 @@ function lookupProcess(ctx, cache) {
   return cache.value;
 }
 
-// One pass over the registry; compares stat() against the stored baseline and re-baselines on a hit.
 export function checkAll(db, ctx) {
   const found = [];
   const cache = {};
@@ -42,7 +41,6 @@ export function checkAll(db, ctx) {
   return found;
 }
 
-// Turns 4663 events into alerts for decoy paths only; remembers the newest event time.
 export function checkAudit(db, ctx, events = null) {
   const since = getMeta(db, 'audit_since') ?? new Date().toISOString();
   const evs = events ?? readEvents(since);
