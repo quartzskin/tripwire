@@ -121,7 +121,6 @@ export async function main(argv, out = console.log) {
       return 0;
     }
 
-    // watch / ui
     const interval = num(opt, 'interval', 5, 1);
     const mon = createMonitor(db, ctx, { interval, fsWatch: !opt['no-fswatch'], audit: !!opt.audit });
     if (cmd === 'watch') {
