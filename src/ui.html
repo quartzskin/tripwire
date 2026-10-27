@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tripwire</title>
+<style>
+  :root { --paper: #ece6d8; --ink: #2f2e2a; --thread: #77746b; --faint: #a9a496; --rust: #b3361e; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font: 14px/1.45 Georgia, "Times New Roman", serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 22px 18px 60px; }
+  header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  h1 { margin: 0; font-size: 26px; font-weight: normal; letter-spacing: .04em; font-style: italic; }
+  .sub, .mono { font: 12px/1.4 Consolas, "Courier New", monospace; color: var(--thread); }
+  button { font: 12px Consolas, monospace; background: none; color: var(--ink); border: 1px solid var(--thread); padding: 3px 10px; cursor: pointer; }
+  button:hover { background: var(--ink); color: var(--paper); }
+  svg { width: 100%; height: auto; display: block; margin-top: 6px; }
+  .strand { fill: none; stroke: var(--thread); stroke-width: .8; stroke-linecap: round; }
+  .ring { stroke-width: .55; opacity: .85; }
+  .node circle { fill: var(--paper); stroke: var(--ink); stroke-width: 1.2; }
+  .node text.g { font: 6.5px Consolas, monospace; text-anchor: middle; fill: var(--ink); }
+  .node text.l { font: 9px Consolas, monospace; text-anchor: middle; fill: var(--thread); stroke: var(--paper); stroke-width: 3px; paint-order: stroke; }
+  .node.missing circle { stroke-dasharray: 2 2; stroke: var(--faint); }
+  .node.disturbed circle { fill: var(--rust); stroke: var(--rust); }
+  .node.disturbed text.g { fill: var(--paper); }
+  .node.disturbed text.l { fill: var(--rust); }
+  .node.disturbed .halo { display: block; }
+  .halo { display: none; fill: none; stroke: var(--rust); stroke-width: .8; animation: halo 2.4s ease-out infinite; transform-box: fill-box; transform-origin: center; }
+  @keyframes halo { from { transform: scale(1); opacity: .9; } to { transform: scale(2.4); opacity: 0; } }
+  .spider { fill: var(--ink); stroke: var(--ink); stroke-width: .8; }
+  h2 { font-size: 13px; font-weight: normal; letter-spacing: .12em; text-transform: uppercase; color: var(--thread); margin: 26px 0 8px; }
+  ol { list-style: none; margin: 0; padding: 0 0 0 18px; border-left: 1px solid var(--thread); }
+  li { position: relative; padding: 5px 0 7px 12px; }
+  li::before { content: ""; position: absolute; left: -22px; top: 11px; width: 7px; height: 7px; border-radius: 50%; background: var(--paper); border: 1px solid var(--ink); }
+  li.new::before { background: var(--rust); border-color: var(--rust); }
+  li .what { font-style: italic; }
+  li .src { color: var(--rust); }
+  .empty { color: var(--thread); font-style: italic; padding-left: 18px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>tripwire</h1>
+    <span class="sub" id="info"></span>
+    <button id="check" type="button">check now</button>
+  </header>
+  <svg id="web" viewBox="0 0 760 500" role="img" aria-label="Web of decoy files"></svg>
+  <h2>Timeline</h2>
+  <div id="timeline"></div>
+</main>
+<script>
+const NS = 'http://www.w3.org/2000/svg';
+const GLYPH = { xlsx: 'XLS', txt: 'TXT', docx: 'DOC', zip: 'ZIP', env: 'ENV', ssh: 'KEY', wallet: 'WAL' };
+const CX = 380, CY = 250, REACH = 205;
+const svg = document.getElementById('web');
+let strands = [], nodes = new Map(), sig = '', maxSeen = null, first = true;
+
+const el = (name, attrs = {}, parent = svg) => {
+  const e = document.createElementNS(NS, name);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  parent.appendChild(e);
+  return e;
+};
+
+function build(decoys) {
+  svg.textContent = '';
+  strands = []; nodes = new Map();
+  const n = Math.max(decoys.length, 1);
+  const S = Math.max(9, Math.min(14, Math.ceil(n / 2)));
+  const R = Math.max(6, Math.ceil(n / S) + 4);
+  const P = (s, k) => {
+    if (k === 0) return [CX, CY];
+    const a = -Math.PI / 2 + (2 * Math.PI * s) / S + 0.04 * Math.sin(s * 5 + k);
+    const r = ((k * REACH) / R) * (1 + 0.035 * Math.sin(s * 7 + k * 3));
+    return [CX + r * Math.cos(a), CY + r * 0.92 * Math.sin(a)];
+  };
+  const strand = (a, b, c, kind, s, k) => {
+    const dx = b[0] - a[0], dy = b[1] - a[1], len = Math.hypot(dx, dy) || 1;
+    const e = el('path', { class: 'strand' + (kind === 'ring' ? ' ring' : '') });
+    const o = { e, a, b, c, nx: -dy / len, ny: dx / len, amp: 0, t0: 0, kind, s, k };
+    draw(o, 0);
+    strands.push(o);
+  };
+  for (let k = 1; k <= R; k++)
+    for (let s = 0; s < S; s++) {
+      const a = P(s, k), b = P((s + 1) % S, k);
+      strand(a, b, [CX + ((a[0] + b[0]) / 2 - CX) * 0.9, CY + ((a[1] + b[1]) / 2 - CY) * 0.9], 'ring', s, k);
+    }
+  for (let s = 0; s < S; s++)
+    for (let k = 0; k < R; k++) {
+      const a = P(s, k), b = P(s, k + 1);
+      strand(a, b, [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], 'spoke', s, k);
+    }
+  spider();
+  const gcd = (a, b) => (b ? gcd(b, a % b) : a);
+  let step = Math.floor(S / 2) + 1;
+  while (gcd(step, S) !== 1) step++;
+  const placed = [];
+  const free = (x, y) => placed.every(p => Math.abs(p[0] - x) > 96 || Math.abs(p[1] - y) > 40);
+  decoys.forEach((d, i) => {
+    let s = (i * step) % S, k = 2 + ((s * 2 + Math.floor(i / S) * 3) % (R - 1)), x, y;
+    for (let t = 0; t < S * R; t++) {
+      s = (i * step + Math.floor(t / (R - 1))) % S;
+      k = 2 + ((s * 2 + t + Math.floor(i / S) * 3) % (R - 1));
+      [x, y] = P(s, k);
+      if (free(x, y)) break;
+    }
+    placed.push([x, y]);
+    const g = el('g', { class: 'node' });
+    const t = el('title', {}, g); t.textContent = d.name + ' in ' + d.dir + ' (' + d.kind + ')';
+    el('circle', { class: 'halo', r: 11 }, g);
+    el('circle', { r: 11 }, g);
+    el('text', { class: 'g', y: 2.3 }, g).textContent = GLYPH[d.kind] || '?';
+    el('text', { class: 'l', y: 24 }, g).textContent = d.name;
+    nodes.set(d.id, { g, x, y, s, k, amp: 0, t0: 0 });
+    g.setAttribute('transform', 'translate(' + x + ' ' + y + ')');
+  });
+}
+
+function spider() {
+  const g = el('g', { transform: 'translate(' + CX + ' ' + CY + ')' });
+  el('ellipse', { class: 'spider', rx: 3.2, ry: 4.4, cy: 1 }, g);
+  el('circle', { class: 'spider', r: 2.2, cy: -4 }, g);
+  for (const sx of [-1, 1]) for (const [dy, ex, ey] of [[-2, 7, -6], [0, 9, -1], [1.5, 9, 5], [3, 6, 9]])
+    el('path', { class: 'spider', fill: 'none', d: 'M0 ' + dy + ' Q' + sx * ex * 0.9 + ' ' + (ey - 4) + ' ' + sx * ex + ' ' + ey }, g);
+}
+
+function draw(o, off) {
+  const cx = o.c[0] + o.nx * off, cy = o.c[1] + o.ny * off;
+  o.e.setAttribute('d', 'M' + o.a[0].toFixed(1) + ' ' + o.a[1].toFixed(1) + 'Q' + cx.toFixed(1) + ' ' + cy.toFixed(1) + ' ' + o.b[0].toFixed(1) + ' ' + o.b[1].toFixed(1));
+}
+
+function pluck(id) {
+  const nd = nodes.get(id);
+  if (!nd) return;
+  const now = performance.now() / 1000;
+  const hit = (o, amp, delay) => {
+    if (amp > o.amp * Math.exp(-Math.max(0, now - o.t0) / 0.9)) { o.amp = amp; o.t0 = now + delay; }
+  };
+  const S = new Set(strands.filter(o => o.kind === 'spoke').map(o => o.s)).size;
+  for (const o of strands) {
+    if (o.kind === 'spoke' && o.s === nd.s) {
+      const dj = o.k >= nd.k ? o.k - nd.k : nd.k - 1 - o.k;
+      hit(o, 11 / (1 + dj * 0.45), dj * 0.06);
+    } else if (o.kind === 'spoke' && (o.s === (nd.s + 1) % S || o.s === (nd.s + S - 1) % S) && Math.abs(o.k - nd.k) <= 1) {
+      hit(o, 3, 0.12);
+    } else if (o.kind === 'ring') {
+      const near = o.s === nd.s || o.s === (nd.s + S - 1) % S;
+      if (o.k === nd.k && near) hit(o, 8, 0.04);
+      else if (Math.abs(o.k - nd.k) === 1 && near) hit(o, 3.5, 0.12);
+    }
+  }
+  nd.amp = 3; nd.t0 = now;
+}
+
+function frame() {
+  const now = performance.now() / 1000;
+  for (const o of strands) {
+    if (!o.amp) continue;
+    const t = now - o.t0;
+    if (t < 0) continue;
+    if (t > 4) { o.amp = 0; draw(o, 0); continue; }
+    draw(o, o.amp * Math.exp(-t / 0.9) * Math.sin(2 * Math.PI * 7 * t));
+  }
+  for (const nd of nodes.values()) {
+    if (!nd.amp) continue;
+    const t = now - nd.t0;
+    if (t > 4) { nd.amp = 0; nd.g.setAttribute('transform', 'translate(' + nd.x + ' ' + nd.y + ')'); continue; }
+    nd.g.setAttribute('transform', 'translate(' + nd.x + ' ' + (nd.y + nd.amp * Math.exp(-t / 0.9) * Math.sin(2 * Math.PI * 7 * t)).toFixed(2) + ')');
+  }
+  requestAnimationFrame(frame);
+}
+
+const fmt = (iso) => {
+  const d = new Date(iso);
+  return d.toLocaleDateString() + ' ' + d.toLocaleTimeString();
+};
+
+function timeline(alerts, fresh) {
+  const box = document.getElementById('timeline');
+  box.textContent = '';
+  if (!alerts.length) {
+    const p = document.createElement('div');
+    p.className = 'empty';
+    p.textContent = 'The web is still. Nothing has touched a decoy.';
+    box.appendChild(p);
+    return;
+  }
+  const ol = document.createElement('ol');
+  for (const a of alerts) {
+    const li = document.createElement('li');
+    if (fresh.has(a.id)) li.className = 'new';
+    const head = document.createElement('div');
+    head.className = 'mono';
+    head.textContent = fmt(a.ts) + '  ';
+    const what = document.createElement('span');
+    what.className = 'what';
+    what.textContent = 'vibration';
+    head.appendChild(what);
+    li.appendChild(head);
+    const line = document.createElement('div');
+    line.textContent = a.name + ' ';
+    const src = document.createElement('span');
+    src.className = 'src mono';
+    src.textContent = a.source;
+    line.appendChild(src);
+    li.appendChild(line);
+    const det = document.createElement('div');
+    det.className = 'mono';
+    det.textContent = a.detail + (a.process ? ' | ' + a.process : '');
+    li.appendChild(det);
+    ol.appendChild(li);
+  }
+  box.appendChild(ol);
+}
+
+function apply(st) {
+  const s = st.decoys.map(d => d.id).join(',') + '|' + st.decoys.map(d => d.name).join(',');
+  if (s !== sig) { sig = s; build(st.decoys); }
+  const now = Date.now();
+  for (const d of st.decoys) {
+    const nd = nodes.get(d.id);
+    if (!nd) continue;
+    const recent = d.last_alert && now - Date.parse(d.last_alert) < 600000;
+    nd.g.setAttribute('class', 'node' + (recent ? ' disturbed' : '') + (d.state === 'missing' ? ' missing' : ''));
+  }
+  const top = st.alerts.length ? st.alerts[0].id : 0;
+  const fresh = new Set();
+  for (const a of st.alerts) {
+    const isNew = first ? now - Date.parse(a.ts) < 20000 : a.id > maxSeen;
+    if (isNew) fresh.add(a.id);
+  }
+  setTimeout(() => { for (const a of st.alerts) if (fresh.has(a.id)) pluck(a.decoy_id); }, 250);
+  maxSeen = Math.max(maxSeen ?? 0, top);
+  first = false;
+  timeline(st.alerts, fresh);
+  const i = st.info || {};
+  document.getElementById('info').textContent = st.decoys.length + ' decoys, ' + st.alerts.length + ' vibrations' +
+    (i.interval ? ', polling every ' + i.interval + 's' : '') + ', webhook ' + (i.webhook ? 'on' : 'off') + ', 4663 audit ' + (i.audit ? 'on' : 'off');
+}
+
+async function load(method) {
+  try {
+    const r = await fetch(method === 'POST' ? '/api/check' : '/api/state', { method: method || 'GET' });
+    if (r.ok) apply(await r.json());
+  } catch (e) { /* server gone; keep the last picture */ }
+}
+document.getElementById('check').addEventListener('click', () => load('POST'));
+load();
+setInterval(load, 1500);
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

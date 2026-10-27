@@ -1,0 +1,16 @@
+{
+  "name": "tripwire",
+  "version": "0.1.0",
+  "description": "Decoy-file canaries for your own machine",
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "tripwire": "bin/tripwire.js"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "engines": {
+    "node": ">=22.5"
+  }
+}
