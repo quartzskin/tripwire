@@ -4,9 +4,9 @@ Plants fake but believable files (a passwords spreadsheet, a `.env`, an `id_rsa`
 
 Node 22.5+ (developed on 26), no dependencies. Registry is a SQLite file written with `node:sqlite`.
 
-![the web](docs/web.svg)
+![the ui](docs/ui.png)
 
-The picture is drawn by the UI's own script against synthetic data and exported as SVG; it is not a browser capture.
+Screenshot of `tripwire ui` against synthetic decoys (headless Edge, since that is what was on hand; the page uses only standard HTML).
 
 ## Use
 
@@ -41,7 +41,7 @@ atime is the weak spot. NTFS has last-access updates switched off or delayed on 
 
 `tripwire ui` serves on 127.0.0.1 (default port 7733), rejects requests whose Host is not the loopback address and port or whose Origin does not match on non-GET requests, and prints the URL. `--no-open` skips launching a browser; `--browser <exe>` or `BROWSER` picks one. It takes the same options as `watch`, so it also monitors while open.
 
-Decoys are nodes on a spider web. A new alert sets the strands around that node vibrating and adds a "vibration" entry to the timeline; nodes touched in the last ten minutes stay red. Only file and folder names are sent to the page, not full paths. The page is plain SVG and inline script, no external requests.
+The page is one plain HTML file: a table of decoys (folder and name, kind, status, last alert time), a table of alerts with the process guess, and a Check now button that runs a scan immediately. It refreshes every 3 seconds. Only file and folder names are sent to the page, not full paths. No external requests.
 
 ## Tests
 
@@ -54,6 +54,6 @@ Temp-dir tests cover planting, the archive formats, simulated access and deletio
 ## Gaps
 
 - The monitor needs to be running to notice; changes made while it was off show up on the next `check` only as an mtime/atime difference.
-- With many decoys (about 20+) the web gets crowded and labels can overlap.
+- "Last access" in the decoy table is the time of the last alert, not a file timestamp.
 - The `--who` guess and the 4663 path were not exercised against a live Windows audit setup here, only against parsed sample events.
 - Only tested on Windows with Node 26.
