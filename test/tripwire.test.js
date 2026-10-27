@@ -252,7 +252,8 @@ test('ui server: state is served, foreign Host and Origin are refused, paths are
 
     const page = await get(srv.port, '/');
     assert.equal(page.status, 200);
-    assert.match(page.body, /<svg id="web"/);
+    assert.match(page.body, /id="decoys"/);
+    assert.doesNotMatch(page.body, /<svg|@keyframes|https?:\/\//);
 
     const st = await get(srv.port, '/api/state');
     const j = JSON.parse(st.body);
